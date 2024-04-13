@@ -1,0 +1,104 @@
+---
+title: "Homework 4"
+author: "Varun Saxena"
+format:
+  pdf:
+    output-file: "saxena-v-hwk4-3"
+    output-ext:  "pdf"
+    header-includes:
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+---
+
+
+```{r}
+#| echo: false
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, readr, readxl, hrbrthemes, fixest,
+               scales, gganimate, gapminder, gifski, png, tufte, plotly, OECD,
+               ggrepel, survey, foreign, devtools, pdftools, kableExtra, modelsummary,
+               kableExtra)
+
+library(knitr)
+#library(ggbeeswarm)
+```
+https://github.com/varunsaxena2/saxena-v-hwk4-3
+```{r}
+#| echo: false
+load("Hwk4_workspace.Rdata")
+```
+\newpage
+1.
+```{r}
+#| echo: false
+q1
+```
+The number of plans appears to be too many, there are a lot of different plans to choose from, resulting in confusion for the consumer and high administrative costs.
+
+\newpage
+2.
+```{r}
+#| echo: false
+q2
+```
+Over time, the average star rating has gone up, as 2010 has more ratings in the 2.5 and N/A columns, while 2015 has more in the 4 and 4.5 columns.
+
+\newpage
+3.
+```{r}
+#| echo: false
+q3
+```
+It has risen steadily by about $40 with a steep dropoff in 2015.
+\newpage
+4.
+```{r}
+#| echo: false
+q4
+```
+Medicare advantage seems to have gained popularity over the years as indicated by the increasing enroll rate. The benchmark payments correlate strongly with the exception of 2015.
+\newpage
+5.
+```{r}
+#| echo: false
+kable(q5, col.names = c("Star Rating", "Number of Plans"))
+```
+
+\newpage
+6.
+```{r}
+#| echo: false
+kable(stars_one, caption = "2.5 vs. 3 Stars")
+kable(stars_two, caption = "3 vs. 3.5 Stars")
+```
+
+\newpage
+7.
+```{r}
+#| echo: false
+kable(resultsband)
+q7
+
+```
+It seems like the findings are somewhat sensitive to bandwith, moreso with the smaller bandwiths. The difference with the larger bandwiths is barely noticeable.
+\newpage
+8.
+```{r}
+#| echo: false
+q81
+q82
+```
+In both instances, there appears to be a jump at the threshold value accompanied by a dip slightly before and another dip slightly after. This would suggest that the discontinuity created by the threshold value may be disrupting an otherwise smoother trend.
+\newpage
+9.
+```{r}
+#| echo: false
+q91
+q92
+```
+The lower premium HMO-based plan appears to have a higher overall rating than Medicare Part D plans. This trend applies to both the 3.0 and 3.5 star charts.
+
+\newpage
+\noindent 10.
+Overall, the star ratings for the health insurance plans are quite low, with the majority stacked around the 2-3 star range. Compared to other goods and services, this is very low. There is also a negative correlation between enroll rate and star rating, indicating that worse rated plans have more enrolees per eligible person. This result is surprising, as the expected result would be the opposite. Lastly, HMO plans appear to be the most favorable among consumers, indicating a preference for lower-premium plans.

@@ -1,0 +1,226 @@
+#Read in/clean data
+data <- readRDS("data/output/final_ma_data.rds")
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, stringr, modelsummary, readxl, data.table, gdata, rddensity, rdrobust,rdd, broom)
+
+library(ggplot2)
+library(rdrobust)
+library(broom)
+
+#data <- data %>% 
+#subset(snp == "No" & premium_partc == 0 & (planid < 800 | planid >= 900))
+
+#Question 1
+filtered_data <- data %>%
+    group_by(county, year) %>%
+    summarize(planid = n())
+
+upper_bound <- quantile(filtered_data$planid, 0.75) + 1.5 * IQR(filtered_data$planid)
+lower_bound <- quantile(filtered_data$planid, 0.25) - 1.5 * IQR(filtered_data$planid)
+
+filtered_data_q1 <- filtered_data %>%
+  filter(planid <= upper_bound, planid >= lower_bound)
+
+q1 <- ggplot(filtered_data_q1, aes(x=as.factor(year), y=planid)) +
+    geom_boxplot(outlier.shape = NA) +
+    labs(x="Year", y="Plan Counts", title="Plan Counts by County and Year") +
+    theme_bw()
+
+#Question 2
+isoyears_data = data %>%
+    filter(year %in% c(2010, 2012, 2015))
+
+ratings <- isoyears_data %>%
+    group_by(year, Star_Rating) %>%
+    summarize(count = n())
+
+q2 <- ggplot(ratings, aes(x = as.factor(Star_Rating), y = count, fill=as.factor(year))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(x = "Star Rating", y = "Count", title = "Distribution of Star Ratings in 2010, 2012, and 2015", fill = "Year") +
+    theme_bw()
+
+#Question 3
+recent_data <- data %>%
+  filter(year >= 2010 & year <= 2015)
+
+average_benchmark_payments <- recent_data %>%
+  group_by(year) %>%
+  summarize(average_benchmark_payment = mean(ma_rate, na.rm = TRUE))
+
+q3<- ggplot(average_benchmark_payments, aes(x = year, y = average_benchmark_payment)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Average Benchmark Payment from 2010 to 2015",
+       x = "Year",
+       y = "Average Benchmark Payment") +
+  theme_bw()
+
+#Question 4
+medrate_data <- recent_data %>%
+  group_by(fips, year) %>%
+  summarize(enroll=first(avg_enrolled),
+    medicare = first(avg_eligibles),
+    bench=first(ma_rate), na.rm=TRUE) %>%
+  mutate(med_rate = enroll/medicare)
+
+q4 <- ggplot(medrate_data, aes(x = as.factor(year), y = med_rate, group = 1)) +
+  geom_line(stat = "summary", fun = "mean") +
+  labs(title = "Average Share of Medicare Advantage from 2010 to 2015",
+       x = "Year", y = "Enroll Rate") +
+  theme_bw()
+
+#Question 5
+ten_data <- data %>%
+    filter(!is.na(avg_enrollment) & year==2010 & !is.na(partc_score))
+
+clean_data <- ten_data %>%
+  mutate(raw_rating=rowMeans(
+    cbind(breastcancer_screen,rectalcancer_screen,cv_cholscreen,diabetes_cholscreen,
+          glaucoma_test,monitoring,flu_vaccine,pn_vaccine,physical_health,
+          mental_health,osteo_test,physical_monitor,primaryaccess,
+          hospital_followup,depression_followup,nodelays,carequickly,
+          overallrating_care,overallrating_plan,calltime,
+          doctor_communicate,customer_service,osteo_manage,
+          diabetes_eye,diabetes_kidney,diabetes_bloodsugar,
+          diabetes_chol,antidepressant,bloodpressure,ra_manage,
+          copd_test,betablocker,bladder,falling,appeals_timely,
+          appeals_review),
+    na.rm=T)) %>%
+  select(contractid, planid, fips, avg_enrollment, state, county, raw_rating, partc_score,
+         avg_eligibles, avg_enrolled, premium_partc, risk_ab, Star_Rating,
+         bid, avg_ffscost, ma_rate, plan_type, partd)
+
+rv_data <- clean_data %>%
+  select(raw_rating) %>%
+  mutate(star_rating = round(raw_rating * 2) / 2)
+
+q5 <- rv_data %>%
+    group_by(star_rating) %>%
+    summarize(number_of_plans = n())
+
+#Question 6
+ma.rd1 <- clean_data %>%
+  filter(Star_Rating==2.5 | Star_Rating==3)
+ma.rd1 <- ma.rd1 %>%
+  mutate(score = raw_rating - 2.75,
+         treat = (score>=0),
+         window1 = (score>=-.125 & score<=.125),
+         mkt_share = avg_enrollment/avg_eligibles,
+         ln_share = log(mkt_share),
+         score_treat=score*treat)
+est275 <- rdrobust(y=ma.rd1$mkt_share, x=ma.rd1$score, c=0,
+                 h=0.125, p=1, kernel="uniform", vce="hc0",
+                 masspoints="off")
+
+#rows <- tribble(~term, ~ m1, ~ m2, ~ m3 ,
+#                'Bandwidth', "0.25", "0.125", "0.125")
+#attr(rows, 'position')  <- 7
+
+#modelsummary(list(star25.1, star25.2, star25.3),
+#          keep=c("score", "treatTRUE", "score_treat"),
+#          coef_map=c("score"="Raw Score", 
+#                    "treatTRUE"="Treatment",
+#                    "score_treat"="Score x Treat"),
+#          gof_map=c("nobs", "r.squared"),
+#          add_rows=rows)
+
+#bandwidth <- c("0.2",  "0.125", "0.125")
+#estimates <- c(est1, est2, est3)
+
+#stars_one <- data.frame(bandwidth,estimates)
+coef <- est275$coef
+se <- est275$se
+
+stars_one <- tibble(
+  Method = c("Conventional", "Bias-Corrected", "HC0 Robust"),
+  Coefficients = coef,
+  StandardError = se
+)
+
+ma.rd2 <- clean_data %>%
+  filter(Star_Rating==3 | Star_Rating==3.5)
+
+ma.rd2 <- ma.rd2 %>%
+  mutate(score = raw_rating - 3.25,
+         treat = (score>=0),
+         window1 = (score>=-.125 & score<=.125),
+         mkt_share = avg_enrollment/avg_eligibles,
+         ln_share = log(mkt_share),
+         score_treat=score*treat)
+est325 <- rdrobust(y=ma.rd2$mkt_share, x=ma.rd2$score, c=0,
+                 h=0.125, p=1, kernel="uniform", vce="hc0",
+                 masspoints="off")
+coef2 <- est325$coef
+se2 <- est325$se
+
+stars_two <- tibble(
+  Method = c("Conventional", "Bias-Corrected", "HC0 Robust"),
+  Coefficients = coef2,
+  StandardError = se2
+)
+#Question 7
+bandwidths <- c(0.1, 0.12, 0.13, 0.14, 0.15)
+
+resultsband <- data.frame()
+
+for (h in bandwidths) {
+  est3 <- rdrobust(y=ma.rd1$mkt_share, x=ma.rd1$score, c=0, h=h, p=1, kernel="uniform", vce="hc0", masspoints="off")
+  resultsband <- rbind(resultsband, data.frame(Bandwidth=h, Star_Rating=3, Estimate=est3$coef[1]))
+
+  est35 <- rdrobust(y=ma.rd2$mkt_share, x=ma.rd2$score, c=0, h=h, p=1, kernel="uniform", vce="hc0", masspoints="off")
+  resultsband <- rbind(resultsband, data.frame(Bandwidth=h, Star_Rating=3.5, Estimate=est35$coef[1]))
+}
+
+q7 <- ggplot(resultsband, aes(x=Bandwidth, y=Estimate, color=factor(Star_Rating))) +
+  geom_line() +
+  labs(x="Bandwidth", y="Estimate", color="Star Rating") +
+  theme_bw()
+
+#Question 8
+dens3 <- rddensity(ma.rd1$score, c=0)
+q81 <- rdplotdensity(dens3, ma.rd1$score)
+
+dens35 <- rddensity(ma.rd2$score, c=0)
+q82 <- rdplotdensity(dens35, ma.rd2$score)
+
+#Question 9
+library(cobalt)
+
+lp_vars1 <- clean_data %>% 
+  ungroup() %>%
+  filter((raw_rating >= 2.75 - .125 & Star_Rating == 2.5) | 
+         (raw_rating <= 2.75 + .125 & Star_Rating == 3)) %>%
+  mutate(rounded = (Star_Rating == 3),
+         plan_type_dummy = ifelse(plan_type == "HMO/HMOPOS", 1, 0)) %>%
+  select(plan_type_dummy, partd, rounded) %>%
+  filter(complete.cases(.))
+
+lp_covs1 <- lp_vars1 %>% select(plan_type_dummy, partd)
+
+q91 <- love.plot(bal.tab(lp_covs1, treat = lp_vars1$rounded), 
+                     colors = "black", 
+                     shapes = "circle") +
+  theme_bw() + 
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = c("Part D Status", "HMO Plans"))
+
+lp_vars2 <- clean_data %>% 
+  ungroup() %>%
+  filter((raw_rating >= 3.25 - .125 & Star_Rating == 3) | 
+         (raw_rating <= 3.25 + .125 & Star_Rating == 3.5)) %>% 
+  mutate(rounded = (Star_Rating == 3.5),
+         plan_type_dummy = ifelse(plan_type == "HMO/HMOPOS", 1, 0)) %>%
+  select(plan_type_dummy, partd, rounded) %>%
+  filter(complete.cases(.))
+
+lp_covs2 <- lp_vars2 %>% select(plan_type_dummy, partd)
+
+q92 <- love.plot(bal.tab(lp_covs2, treat = lp_vars2$rounded), 
+                     colors = "black", 
+                     shapes = "circle") +
+  theme_bw() + 
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = c("Part D Status", "HMO Plans"))
+
+save.image("data/analysis/Hwk4_workspace.Rdata")
